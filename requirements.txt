@@ -1,16 +1,11 @@
-# الأساسيات المشغلة للواجهة والنظام
-gradio==4.44.1
+gradio
 setuptools
 soundfile
 pydub
 accelerate
-
-# محركات المعالجة (تم إزالة الإصدارات لمنع التعارض)
 numpy
 resampy
 librosa
-
-# محركات الذكاء الاصطناعي الأساسية (مرنة للتوافق مع Gradio)
 torch
 torchaudio
 huggingface_hub
@@ -19,13 +14,7 @@ tqdm
 transformers
 diffusers
 omegaconf
-
-# المكتبات الخاصة بمحرك نما (تم فصل s3tokenizer لتثبيته يدوياً)
 resemble-enhance
-silero-vad==5.1.2
-conformer==0.3.2
+silero-vad
+conformer
 safetensors
-
-# Optional language-specific dependencies
-# Uncomment the ones you need for specific languages:
-# dicta-onnx>=0.1.0     # For Hebrew diacritization
