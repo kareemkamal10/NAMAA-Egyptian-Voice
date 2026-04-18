@@ -5,20 +5,20 @@ soundfile
 pydub
 accelerate
 
-# محركات المعالجة (بدون أرقام إصدارات صارمة لمنع التعارض)
+# محركات المعالجة (تم إزالة الإصدارات لمنع التعارض)
 numpy
 resampy
 librosa
 
-# محركات الذكاء الاصطناعي الأساسية
+# محركات الذكاء الاصطناعي الأساسية (مرنة للتوافق مع Gradio)
 torch
 torchaudio
 huggingface_hub
 einops
 tqdm
-transformers==4.46.3
-diffusers==0.29.0
-omegaconf==2.3.0
+transformers
+diffusers
+omegaconf
 
 # المكتبات الخاصة بمحرك نما (تم فصل s3tokenizer لتثبيته يدوياً)
 resemble-enhance
