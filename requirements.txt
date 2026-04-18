@@ -14,6 +14,7 @@ tqdm
 transformers
 diffusers
 omegaconf
+resemble-perth
 silero-vad
 conformer
 safetensors
