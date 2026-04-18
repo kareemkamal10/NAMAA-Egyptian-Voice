@@ -1,8 +1,4 @@
-﻿# NAMAA Egyptian Voice
-
-تحويل النص باللهجة المصرية إلى صوت باستخدام نموذج NAMAA.
-
-## تشغيل سريع
+﻿## تشغيل سريع
 
 [![Open Notebook](https://img.shields.io/badge/Open%20Notebook-Colab-F9AB00?logo=googlecolab&logoColor=white)](https://colab.research.google.com/github/kareemkamal10/NAMAA-Egyptian-Voice/blob/main/NAMAA_Colab_T4.ipynb)
 
@@ -12,11 +8,6 @@
 - `NAMAA_Colab_T4.ipynb`: نوتبوك Colab مجهز للعمل مع GPU T4.
 - `requirements.txt`: الاعتمادات المثبتة بإصدارات محددة.
 
-## التشغيل المحلي (CLI)
-
-```bash
-python app.py "انا سبت الشغل وراجع دلوقتي" --output outputs/output.wav
-```
 
 ## التشغيل على Colab
 
