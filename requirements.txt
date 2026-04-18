@@ -1,20 +1,24 @@
-gradio
+gradio==4.44.1
+numpy==1.26.0
+resampy==0.4.3
+librosa==0.10.1
+s3tokenizer
+transformers==4.46.3
+diffusers==0.29.0
+omegaconf==2.3.0
+resemble-enhance
+silero-vad
+conformer
+safetensors
 torch
 torchaudio
 huggingface_hub
 einops
 tqdm
-numpy==1.26.0
-resampy==0.4.3
-librosa==0.10.0
-s3tokenizer
-transformers==4.46.3
-diffusers==0.29.0
-omegaconf==2.3.0
-resemble-perth==1.0.1
-silero-vad==5.1.2
-conformer==0.3.2
-safetensors
+setuptools
+soundfile
+pydub
+accelerate
 
 # Optional language-specific dependencies
 # Uncomment the ones you need for specific languages:
