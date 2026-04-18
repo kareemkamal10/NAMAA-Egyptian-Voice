@@ -1,12 +1,13 @@
+import argparse
 import random
 import numpy as np
 import torch
 from pathlib import Path
 import os
 
-import gradio as gr
 from huggingface_hub import snapshot_download
 from safetensors.torch import load_file as load_safetensors
+import soundfile as sf
 
 from src.chatterbox.mtl_tts import ChatterboxMultilingualTTS, SUPPORTED_LANGUAGES
 
@@ -17,23 +18,14 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"🚀 Running on device: {DEVICE}")
 
 REPO_ID = "NAMAA-Space/NAMAA-Egyptian-TTS"
-
-ckpt_dir = Path(
-    snapshot_download(
-        repo_id=REPO_ID,
-        repo_type="model",
-        revision="main",
-        allow_patterns=[
-            "ve.pt",
-            "t3_mtl23ls_v2.safetensors",
-            "s3gen.pt",
-            "grapheme_mtl_merged_expanded_v1.json",
-            "conds.pt",
-            "Cangjie5_TC.json",
-        ],
-        token=os.getenv("HF_TOKEN"),
-    )
-)
+MODEL_FILES = [
+    "ve.pt",
+    "t3_mtl23ls_v2.safetensors",
+    "s3gen.pt",
+    "grapheme_mtl_merged_expanded_v1.json",
+    "conds.pt",
+    "Cangjie5_TC.json",
+]
 
 # =============================
 # Global Model
@@ -71,6 +63,15 @@ def get_or_load_model():
     global MODEL
     if MODEL is None:
         print("Loading model using from_pretrained...")
+        ckpt_dir = Path(
+            snapshot_download(
+                repo_id=REPO_ID,
+                repo_type="model",
+                revision="main",
+                allow_patterns=MODEL_FILES,
+                token=os.getenv("HF_TOKEN"),
+            )
+        )
         # Load base model
         MODEL = ChatterboxMultilingualTTS.from_pretrained(device=DEVICE)
         
@@ -87,11 +88,6 @@ def get_or_load_model():
         
         print("Model loaded successfully!")
     return MODEL
-
-try:
-    get_or_load_model()
-except Exception as e:
-    print(f"CRITICAL: Failed to load model. Error: {e}")
 
 def set_seed(seed: int):
     torch.manual_seed(seed)
@@ -119,7 +115,7 @@ def generate_tts_audio(
 
     text_input = (text_input or "").strip()
     if not text_input:
-        raise gr.Error("الرجاء إدخال نص.")
+        raise ValueError("الرجاء إدخال نص.")
 
     chosen_prompt = audio_prompt_path_input or default_audio_for_ui("ar")
 
@@ -143,164 +139,38 @@ def generate_tts_audio(
 def pick_random_egyptian_example():
     return random.choice(EGYPTIAN_EXAMPLES)
 
-# =============================
-# Custom CSS (HTML Design)
-# =============================
-CUSTOM_CSS = """
-.gradio-container {
-  direction: rtl;
-  font-family: 'Noto Naskh Arabic', 'Segoe UI', Tahoma, Arial;
-}
-.namaa-hero {
-  background: linear-gradient(135deg, #0b7a3b, #16a34a);
-  color: white;
-  padding: 22px;
-  border-radius: 18px;
-  text-align: center;
-  margin-bottom: 16px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.15);
-}
-.namaa-hero h1 {
-  font-size: 30px;
-  margin-bottom: 6px;
-  font-weight: 800;
-}
-.namaa-hero p {
-  font-size: 15px;
-  opacity: 0.95;
-}
-.namaa-card {
-  background: white;
-  border-radius: 16px;
-  padding: 14px;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.08);
-  border: 1px solid rgba(0,0,0,0.06);
-}
-.namaa-note {
-  background: rgba(22,163,74,0.1);
-  border: 1px solid rgba(22,163,74,0.3);
-  border-radius: 12px;
-  padding: 10px;
-  font-size: 13px;
-}
-/* شرح عناصر التحكم (info) — وضوح الخط ومحاذاة RTL */
-.gradio-container .block-info,
-.gradio-container [class*="block-info"] {
-  direction: rtl;
-  text-align: right;
-  line-height: 1.65;
-  font-size: 0.94rem;
-}
-"""
+def main():
+    parser = argparse.ArgumentParser(description="Generate Egyptian Arabic speech with NAMAA TTS.")
+    parser.add_argument("text", nargs="?", default="", help="Text to synthesize.")
+    parser.add_argument("--audio-prompt", dest="audio_prompt", default=None, help="Optional reference audio path.")
+    parser.add_argument("--exaggeration", type=float, default=0.5, help="Speech expressiveness level.")
+    parser.add_argument("--temperature", type=float, default=0.8, help="Sampling temperature.")
+    parser.add_argument("--seed", type=int, default=0, help="Random seed. Use 0 to keep stochastic behavior.")
+    parser.add_argument("--cfg-weight", type=float, default=0.5, help="CFG / pace weight.")
+    parser.add_argument("--output", default="output.wav", help="Output WAV file path.")
+    parser.add_argument("--use-example", action="store_true", help="Use a random Egyptian example sentence.")
+    args = parser.parse_args()
 
-# نصوص info تدعم HTML (Gradio يعرض markdown/HTML تحت التسمية)
-def _hint(body_gray: str, example_blue: str) -> str:
-    """جزء رمادي + مثال بين نجمتين بلون أزرق خافت."""
-    return (
-        f'<span style="color:#64748b;">{body_gray}</span> '
-        f'<span style="color:#5b7fb8;">*</span>'
-        f'<span style="color:#4a6fa5;font-style:italic;">{example_blue}</span>'
-        f'<span style="color:#5b7fb8;">*</span>'
+    text_input = args.text.strip()
+    if args.use_example:
+        text_input = pick_random_egyptian_example()
+    elif not text_input:
+        text_input = default_text_for_ui("ar")
+
+    sample_rate, audio = generate_tts_audio(
+        text_input,
+        audio_prompt_path_input=args.audio_prompt,
+        exaggeration_input=args.exaggeration,
+        temperature_input=args.temperature,
+        seed_num_input=args.seed,
+        cfgw_input=args.cfg_weight,
     )
 
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    sf.write(output_path, audio, sample_rate)
+    print(f"Saved audio to: {output_path}")
 
-INFO_EXAGGERATION = _hint(
-    "يتحكم في مستوى الدراما والتعبير في الصوت؛",
-    'مثال: لو رفعتها لـ 1.5 هيخلي الصوت يبدو "تمثيلي" ومبالغ فيه جداً.',
-)
-INFO_CFG = _hint(
-    "يوازن بين دقة النص وسرعة الكلام؛",
-    "مثال: ضبطها على 0.7 قد يسرع الكلام قليلاً لكنه قد يقلل من جودة نطق بعض الكلمات.",
-)
-INFO_SEED = _hint(
-    "الرقم العشوائي الذي يولد نفس النبرة في كل مرة؛",
-    "مثال: لو استخدمت الـ Seed رقم 42 ستحصل على نفس الصوت بالضبط في كل تجربة.",
-)
-INFO_TEMPERATURE = _hint(
-    "يتحكم في عشوائية الصوت وإبداعه؛",
-    "مثال: لو رفعتها لـ 1.2 ستحصل على نبرات مختلفة وغير متوقعة في كل مرة تولد فيها نفس النص.",
-)
 
-# =============================
-# UI
-# =============================
-with gr.Blocks(css=CUSTOM_CSS, theme=gr.themes.Soft()) as demo:
-    gr.HTML(
-        """
-<div class="namaa-hero">
-  <h1>🇪🇬 NAMAA Egyptian Dialect TTS</h1>
-  <p>تحويل النص باللهجة المصرية إلى صوت طبيعي<br/>
-  مدعوم من مجتمع <b>نماء</b></p>
-</div>
-"""
-    )
-
-    with gr.Row():
-        with gr.Column():
-            with gr.Group(elem_classes=["namaa-card"]):
-                text = gr.Textbox(
-                    value=default_text_for_ui("ar"),
-                    label="النص (لهجة مصرية)",
-                    max_lines=5,
-                )
-
-                with gr.Row():
-                    random_btn = gr.Button("🎲 مثال مصري")
-                    clear_btn = gr.Button("🧹 مسح")
-
-                ref_wav = gr.Audio(
-                    sources=["upload", "microphone"],
-                    type="filepath",
-                    label="صوت مرجعي (اختياري)",
-                    value=default_audio_for_ui("ar"),
-                )
-
-                gr.HTML(
-                    """
-<div class="namaa-note">
-<b>ملاحظة:</b> يفضّل أن يكون الصوت المرجعي مصري لتجنّب انتقال لهجة مختلفة.
-</div>
-"""
-                )
-
-                exaggeration = gr.Slider(
-                    0.25,
-                    2.0,
-                    value=0.5,
-                    label="Exaggeration",
-                    info=INFO_EXAGGERATION,
-                )
-                cfg_weight = gr.Slider(
-                    0.0,
-                    1.0,
-                    value=0.5,
-                    label="CFG / Pace",
-                    info=INFO_CFG,
-                )
-
-                with gr.Accordion("⚙️ إعدادات متقدمة", open=False):
-                    seed_num = gr.Number(value=0, label="Seed", info=INFO_SEED)
-                    temp = gr.Slider(
-                        0.05,
-                        5.0,
-                        value=0.8,
-                        label="Temperature",
-                        info=INFO_TEMPERATURE,
-                    )
-
-                run_btn = gr.Button("🔊 توليد الصوت", variant="primary")
-
-        with gr.Column():
-            with gr.Group(elem_classes=["namaa-card"]):
-                audio_output = gr.Audio(label="الصوت الناتج")
-
-    random_btn.click(fn=pick_random_egyptian_example, inputs=[], outputs=[text])
-    clear_btn.click(fn=lambda: "", inputs=[], outputs=[text])
-
-    run_btn.click(
-        fn=generate_tts_audio,
-        inputs=[text, ref_wav, exaggeration, temp, seed_num, cfg_weight],
-        outputs=[audio_output],
-    )
-
-demo.launch(mcp_server=True)
+if __name__ == "__main__":
+    main()
