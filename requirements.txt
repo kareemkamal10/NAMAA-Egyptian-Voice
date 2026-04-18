@@ -1,24 +1,30 @@
+# الأساسيات المشغلة للواجهة والنظام
 gradio==4.44.1
-numpy==1.26.0
-resampy==0.4.3
-librosa==0.10.1
-s3tokenizer
-transformers==4.46.3
-diffusers==0.29.0
-omegaconf==2.3.0
-resemble-enhance
-silero-vad
-conformer
-safetensors
+setuptools
+soundfile
+pydub
+accelerate
+
+# محركات المعالجة (بدون أرقام إصدارات صارمة لمنع التعارض)
+numpy
+resampy
+librosa
+
+# محركات الذكاء الاصطناعي الأساسية
 torch
 torchaudio
 huggingface_hub
 einops
 tqdm
-setuptools
-soundfile
-pydub
-accelerate
+transformers==4.46.3
+diffusers==0.29.0
+omegaconf==2.3.0
+
+# المكتبات الخاصة بمحرك نما (تم فصل s3tokenizer لتثبيته يدوياً)
+resemble-enhance
+silero-vad==5.1.2
+conformer==0.3.2
+safetensors
 
 # Optional language-specific dependencies
 # Uncomment the ones you need for specific languages:
