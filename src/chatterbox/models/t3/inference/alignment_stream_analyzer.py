@@ -60,9 +60,18 @@ class AlignmentStreamAnalyzer:
         # using it for all layers slows things down too much. We can apply it to just one layer
         # by intercepting the kwargs and adding a forward hook (credit: jrm)
         self.last_aligned_attns = []
+        self.disabled = False
         for i, (layer_idx, head_idx) in enumerate(LLAMA_ALIGNED_HEADS):
             self.last_aligned_attns += [None]
-            self._add_attention_spy(tfmr, i, layer_idx, head_idx)
+            try:
+                self._add_attention_spy(tfmr, i, layer_idx, head_idx)
+            except Exception as exc:
+                logger.warning(
+                    "Alignment analyzer disabled because attention hooks could not be attached: %s",
+                    exc,
+                )
+                self.disabled = True
+                break
 
     def _add_attention_spy(self, tfmr, buffer_idx, layer_idx, head_idx):
         """
@@ -84,12 +93,37 @@ class AlignmentStreamAnalyzer:
         target_layer.register_forward_hook(attention_forward_hook)
         if hasattr(tfmr, 'config') and hasattr(tfmr.config, 'output_attentions'):
             self.original_output_attentions = tfmr.config.output_attentions
-            tfmr.config.output_attentions = True
+            try:
+                tfmr.config.output_attentions = True
+            except ValueError as exc:
+                # transformers>=4.40 blocks output_attentions when SDPA is active.
+                switched_to_eager = False
+                for attr_name in ("_attn_implementation", "attn_implementation"):
+                    if hasattr(tfmr.config, attr_name):
+                        try:
+                            setattr(tfmr.config, attr_name, "eager")
+                            switched_to_eager = True
+                        except Exception:
+                            pass
+
+                if switched_to_eager:
+                    logger.info(
+                        "Switched transformer attention implementation to eager so output_attentions can be enabled."
+                    )
+                    tfmr.config.output_attentions = True
+                else:
+                    raise ValueError(
+                        "Unable to enable output_attentions for alignment spy"
+                    ) from exc
 
     def step(self, logits, next_token=None):
         """
         Emits an AlignmentAnalysisResult into the output queue, and potentially modifies the logits to force an EOS.
         """
+        if self.disabled or any(attn is None for attn in self.last_aligned_attns):
+            # If attention spying is unavailable, skip alignment heuristics and keep generation running.
+            return logits
+
         # extract approximate alignment matrix chunk (1 frame at a time after the first chunk)
         aligned_attn = torch.stack(self.last_aligned_attns).mean(dim=0) # (N, N)
         i, j = self.text_tokens_slice
