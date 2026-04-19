@@ -2,6 +2,8 @@
 
 [![Open Notebook](https://img.shields.io/badge/Open%20Notebook-Colab-F9AB00?logo=googlecolab&logoColor=white)](https://colab.research.google.com/github/kareemkamal10/NAMAA-Egyptian-Voice/blob/main/NAMAA_Colab_T4.ipynb)
 
+[![Open Notebook Test](https://img.shields.io/badge/Open%20Notebook-Colab-F9AB00?logo=googlecolab&logoColor=white)](https://colab.research.google.com/github/kareemkamal10/NAMAA-Egyptian-Voice/blob/main/NAMAA_Colab_T4_TEST.ipynb)
+
 ## المحتويات
 
 - `app.py`: تشغيل المشروع عبر CLI بنمط جلسات (تفاعلي أو مباشر).
