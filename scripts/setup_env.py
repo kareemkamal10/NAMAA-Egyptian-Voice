@@ -26,12 +26,75 @@ def run_cmd(command: list[str], cwd: Path | None = None):
             f"Command failed ({result.returncode}): {cmd_str}\n"
             f"{(result.stderr or '').strip()[-2000:]}"
         )
+    return result
 
 
 def get_venv_python(venv_path: Path) -> Path:
     if os.name == "nt":
         return venv_path / "Scripts" / "python.exe"
     return venv_path / "bin" / "python"
+
+
+def ensure_pip_available(python_executable: str, cwd: Path):
+    try:
+        run_cmd([python_executable, "-m", "pip", "--version"], cwd=cwd)
+        return
+    except RuntimeError:
+        print("pip is not available. Trying ensurepip...")
+
+    run_cmd([python_executable, "-m", "ensurepip", "--upgrade"], cwd=cwd)
+
+
+def ensure_virtualenv_available(python_executable: str, cwd: Path):
+    try:
+        run_cmd([python_executable, "-m", "virtualenv", "--version"], cwd=cwd)
+        return
+    except RuntimeError:
+        print("virtualenv is not available. Installing it...")
+
+    ensure_pip_available(python_executable, cwd)
+
+    install_attempts = [
+        [python_executable, "-m", "pip", "install", "-U", "virtualenv"],
+        [python_executable, "-m", "pip", "install", "--break-system-packages", "-U", "virtualenv"],
+        [python_executable, "-m", "pip", "install", "--user", "-U", "virtualenv"],
+    ]
+
+    last_error = None
+    for install_cmd in install_attempts:
+        try:
+            run_cmd(install_cmd, cwd=cwd)
+            run_cmd([python_executable, "-m", "virtualenv", "--version"], cwd=cwd)
+            return
+        except RuntimeError as error:
+            last_error = error
+
+    raise RuntimeError(
+        "Unable to install virtualenv automatically. "
+        "Please install it manually then re-run this script."
+    ) from last_error
+
+
+def create_virtual_environment(python_executable: str, venv_path: Path, backend: str, cwd: Path):
+    selected_backend = backend.lower().strip()
+    if selected_backend not in {"auto", "venv", "virtualenv"}:
+        raise ValueError("Invalid venv backend. Expected one of: auto, venv, virtualenv")
+
+    if selected_backend in {"auto", "venv"}:
+        try:
+            run_cmd([python_executable, "-m", "venv", str(venv_path)], cwd=cwd)
+            return
+        except RuntimeError as venv_error:
+            if selected_backend == "venv":
+                raise
+            print("Built-in venv failed; falling back to virtualenv...")
+            print(str(venv_error))
+
+    ensure_virtualenv_available(python_executable, cwd)
+    run_cmd(
+        [python_executable, "-m", "virtualenv", "--python", python_executable, str(venv_path)],
+        cwd=cwd,
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -57,6 +120,12 @@ def parse_args() -> argparse.Namespace:
         "--python",
         default="",
         help="Python interpreter used to create the virtualenv (default: current interpreter).",
+    )
+    parser.add_argument(
+        "--venv-backend",
+        default="auto",
+        choices=["auto", "venv", "virtualenv"],
+        help="Environment creation backend. 'auto' tries venv first then falls back to virtualenv.",
     )
     parser.add_argument(
         "--recreate",
@@ -94,13 +163,19 @@ def main():
     print(f"Virtualenv path : {venv_path}")
     print(f"Requirements    : {requirements_path}")
     print(f"Python          : {python_executable}")
+    print(f"Venv backend    : {args.venv_backend}")
 
     if args.recreate and venv_path.exists():
         print(f"Removing existing virtualenv: {venv_path}")
         shutil.rmtree(venv_path)
 
     if not venv_path.exists():
-        run_cmd([python_executable, "-m", "venv", str(venv_path)], cwd=project_dir)
+        create_virtual_environment(
+            python_executable=python_executable,
+            venv_path=venv_path,
+            backend=args.venv_backend,
+            cwd=project_dir,
+        )
     else:
         print("Virtualenv already exists. Reusing it.")
 
