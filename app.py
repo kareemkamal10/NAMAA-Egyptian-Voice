@@ -1,7 +1,12 @@
 import argparse
+import json
 import os
 import random
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import urlparse
 
 import numpy as np
 import soundfile as sf
@@ -36,6 +41,8 @@ DEFAULT_TEMPERATURE = 0.8
 # Global Model
 # =============================
 MODEL = None
+MODEL_LOCK = threading.Lock()
+SERVICE_LAST_ACTIVITY = time.time()
 
 # =============================
 # Egyptian Arabic Defaults
@@ -161,6 +168,165 @@ def resolve_unique_output_path(
     return candidate
 
 
+def _float_or_default(value, default_value: float) -> float:
+    try:
+        return float(value)
+    except Exception:
+        return float(default_value)
+
+
+def _int_or_default(value, default_value: int) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return int(default_value)
+
+
+def mark_service_activity():
+    global SERVICE_LAST_ACTIVITY
+    SERVICE_LAST_ACTIVITY = time.time()
+
+
+class NamaaServiceHandler(BaseHTTPRequestHandler):
+    server_version = "NamaaService/1.0"
+
+    def log_message(self, format, *args):
+        message = format % args
+        print(f"[service] {self.address_string()} - {message}")
+
+    def _send_json(self, payload: dict, status: int = 200):
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _read_json_payload(self) -> dict:
+        content_length = int(self.headers.get("Content-Length", "0") or "0")
+        if content_length <= 0:
+            return {}
+        raw = self.rfile.read(content_length)
+        if not raw:
+            return {}
+        return json.loads(raw.decode("utf-8"))
+
+    def do_GET(self):
+        path = urlparse(self.path).path
+
+        if path == "/health":
+            self._send_json(
+                {
+                    "status": "ok",
+                    "device": DEVICE,
+                    "idle_timeout_seconds": getattr(self.server, "idle_timeout_seconds", 600),
+                }
+            )
+            return
+
+        if path == "/api-placeholder":
+            self._send_json(
+                {
+                    "status": "ready",
+                    "message": "API placeholder is ready for future endpoints.",
+                    "planned_endpoints": ["/generate", "/health"],
+                }
+            )
+            return
+
+        self._send_json({"error": "Not found"}, status=404)
+
+    def do_POST(self):
+        path = urlparse(self.path).path
+
+        if path != "/generate":
+            self._send_json({"error": "Not found"}, status=404)
+            return
+
+        try:
+            payload = self._read_json_payload()
+        except Exception as error:
+            self._send_json({"error": f"Invalid JSON payload: {error}"}, status=400)
+            return
+
+        prompt_value = str(payload.get("prompt") or payload.get("text") or "").strip()
+        if not prompt_value:
+            self._send_json({"error": "prompt is required"}, status=400)
+            return
+
+        reference_value = payload.get("reference") or payload.get("audio_prompt")
+        try:
+            reference_path = normalize_reference_path(str(reference_value).strip() if reference_value else "")
+        except Exception as error:
+            self._send_json({"error": str(error)}, status=400)
+            return
+
+        exaggeration_value = _float_or_default(payload.get("exaggeration"), DEFAULT_EXAGGERATION)
+        cfg_pace_value = _float_or_default(payload.get("cfg_pace"), DEFAULT_CFG_PACE)
+        seed_value = _int_or_default(payload.get("seed"), DEFAULT_SEED)
+        temperature_value = _float_or_default(payload.get("temperature"), DEFAULT_TEMPERATURE)
+
+        output_name = str(payload.get("outputname") or payload.get("output_name") or "output").strip()
+        output_dir = Path(str(payload.get("output_dir") or "outputs"))
+
+        try:
+            with MODEL_LOCK:
+                sample_rate, audio = generate_tts_audio(
+                    text_input=prompt_value,
+                    audio_prompt_path_input=reference_path,
+                    exaggeration_input=exaggeration_value,
+                    temperature_input=temperature_value,
+                    seed_num_input=seed_value,
+                    cfgw_input=cfg_pace_value,
+                )
+        except Exception as error:
+            self._send_json({"error": str(error)}, status=400)
+            return
+
+        output_path = resolve_unique_output_path(output_name=output_name, output_dir=output_dir, default_stem="output")
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        sf.write(output_path, audio, sample_rate)
+        mark_service_activity()
+
+        self._send_json(
+            {
+                "ok": True,
+                "output_path": str(output_path.resolve()),
+                "sample_rate": int(sample_rate),
+                "reference_used": bool(reference_path),
+            }
+        )
+
+
+def run_background_service(host: str, port: int, idle_timeout_seconds: int, no_preload: bool = False):
+    global SERVICE_LAST_ACTIVITY
+    SERVICE_LAST_ACTIVITY = time.time()
+
+    if not no_preload:
+        print("Loading model on startup...")
+        get_or_load_model()
+
+    httpd = ThreadingHTTPServer((host, int(port)), NamaaServiceHandler)
+    httpd.timeout = 1
+    httpd.idle_timeout_seconds = int(idle_timeout_seconds)
+
+    print(f"Service started on http://{host}:{port}")
+    print("Endpoints: GET /health, GET /api-placeholder, POST /generate")
+    print(f"Idle shutdown timeout: {idle_timeout_seconds} seconds")
+
+    try:
+        while True:
+            httpd.handle_request()
+            if idle_timeout_seconds > 0:
+                idle_for = time.time() - SERVICE_LAST_ACTIVITY
+                if idle_for >= idle_timeout_seconds:
+                    print(f"No activity for {idle_timeout_seconds} seconds. Stopping service...")
+                    break
+    finally:
+        httpd.server_close()
+        print("Service stopped.")
+
+
 def prompt_non_empty_text(prompt_label: str) -> str:
     while True:
         value = input(prompt_label).strip()
@@ -273,7 +439,7 @@ def resolve_output_path_from_args(args: argparse.Namespace) -> Path:
     )
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv=None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Generate Egyptian Arabic speech with NAMAA TTS (session-aware CLI)."
     )
@@ -349,7 +515,27 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("--use-example", action="store_true", help="Use a random Egyptian example sentence.")
 
-    return parser.parse_args()
+    return parser.parse_args(argv)
+
+
+def parse_serve_args(argv=None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Run NAMAA background model service."
+    )
+    parser.add_argument("--host", default="127.0.0.1", help="Bind host for service.")
+    parser.add_argument("--port", type=int, default=7861, help="Bind port for service.")
+    parser.add_argument(
+        "--idle-timeout",
+        type=int,
+        default=600,
+        help="Auto-shutdown timeout in seconds when no generation activity happens.",
+    )
+    parser.add_argument(
+        "--no-preload",
+        action="store_true",
+        help="Do not preload model at startup; load on first generation request.",
+    )
+    return parser.parse_args(argv)
 
 
 def build_session_inputs(args: argparse.Namespace) -> tuple[str, str | None, float, float, int, float]:
@@ -379,6 +565,16 @@ def build_session_inputs(args: argparse.Namespace) -> tuple[str, str | None, flo
 
 
 def main():
+    if len(os.sys.argv) > 1 and os.sys.argv[1] == "serve":
+        serve_args = parse_serve_args(os.sys.argv[2:])
+        run_background_service(
+            host=serve_args.host,
+            port=serve_args.port,
+            idle_timeout_seconds=serve_args.idle_timeout,
+            no_preload=serve_args.no_preload,
+        )
+        return
+
     args = parse_args()
 
     text_input, audio_prompt_raw, exaggeration, cfg_pace, seed, temperature = build_session_inputs(args)
