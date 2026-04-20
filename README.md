@@ -2,14 +2,14 @@
 
 [![Open Notebook](https://img.shields.io/badge/Open%20Notebook-Colab-F9AB00?logo=googlecolab&logoColor=white)](https://colab.research.google.com/github/kareemkamal10/NAMAA-Egyptian-Voice/blob/main/NAMAA_Colab_T4.ipynb)
 
-[![Open Notebook Test](https://img.shields.io/badge/Open%20Notebook-Colab-F9AB00?logo=googlecolab&logoColor=black)](https://colab.research.google.com/github/kareemkamal10/NAMAA-Egyptian-Voice/blob/main/NAMAA_Colab_T4_TEST.ipynb)
+[![Open Notebook Kaggle](https://img.shields.io/badge/Open%20Notebook-Kaggle-20BEFF?logo=kaggle&logoColor=white)](https://www.kaggle.com/code/kareemkamal10/namaa-egyptian-voice-kaggle-t4)
 
 ## المحتويات
 
 - `app.py`: تشغيل المشروع عبر CLI بنمط جلسات (تفاعلي أو مباشر).
 - `scripts/setup_env.py`: سكريبت Python مستقل لإنشاء virtualenv وتثبيت المتطلبات.
 - `NAMAA_Colab_T4.ipynb`: النوتبوك الأساسية.
-- `NAMAA_Colab_T4_TEST.ipynb`: نوتبوك تجريبية للتعديلات قبل النقل للنسخة الأساسية.
+- `NAMAA_Kaggle_T4.ipynb`: نوتبوك Kaggle بنفس التدفق (setup -> service -> web UI).
 - `requirements.txt`: الاعتمادات المثبتة بإصدارات محددة.
 
 ## إعداد البيئة (مستقل عن Colab)
